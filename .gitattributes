@@ -1,0 +1,2 @@
+# Sample data: keep the official files byte-for-byte (no line-ending conversion)
+data/sample/** -text

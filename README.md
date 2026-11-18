@@ -34,7 +34,7 @@ fichier XML ──► lire (streaming) ──► valider + nettoyer ──► ch
 ## Installation
 
 ```bash
-git clone <url-du-depot>
+git clone https://github.com/yassinedarweziRed/quebec-property-roll-importer.git
 cd quebec-property-roll-importer
 npm install
 docker compose up -d      # démarre PostgreSQL 16 + PostGIS et crée les tables automatiquement
@@ -43,6 +43,32 @@ docker compose up -d      # démarre PostgreSQL 16 + PostGIS et crée les tables
 > La base écoute sur le port **5433** (et non 5432) pour éviter un conflit avec un PostgreSQL déjà installé.
 > Connexion par défaut : `postgres://roll:roll@localhost:5433/property_roll`
 > (modifiable avec la variable d'environnement `DATABASE_URL`).
+
+## Démarrage rapide (sans accès Internet)
+
+Un petit échantillon officiel est inclus dans le dépôt (`data/sample/`), pour pouvoir tester l'outil
+même derrière un pare-feu :
+
+```bash
+npm run import -- data/sample --index data/sample/indexRole2026.csv
+```
+
+```
+Municipality names loaded from index: 1134
+SUCCESS RL01042_2026.xml  read=593 loaded=593 rejected=0  233 ms
+```
+
+Une deuxième exécution affiche `SKIPPED` (même contenu déjà chargé).
+
+| Fichier | Contenu |
+|---|---|
+| `data/sample/RL01042_2026.xml` | Rôle 2026 de Grosse-Île : 593 unités, 0,6 Mo |
+| `data/sample/indexRole2026.csv` | Index officiel 2026 : code, nom et lien des 1 134 municipalités |
+
+Les fichiers sont identiques aux originaux (même empreinte SHA-256). Source : Données Québec,
+[Rôles d'évaluation foncière du Québec](https://www.donneesquebec.ca/recherche/dataset/roles-d-evaluation-fonciere-du-quebec),
+Ministère des Affaires municipales et de l'Habitation, licence
+[CC-BY 4.0](https://www.donneesquebec.ca/licence/#cc-by).
 
 ## Données
 
@@ -176,6 +202,7 @@ Dans pgAdmin, le bouton « œil » de la colonne `geom` affiche les résultats s
 │   ├── geo.ts                  bonus : chargement des points depuis le GeoPackage
 │   ├── gpkg.ts                 décodage des géométries GeoPackage
 │   └── scripts/profile.ts      outil d'analyse des données (hors import)
+├── data/sample/                échantillon officiel (Grosse-Île + index), le reste de data/ est ignoré par git
 ├── tests/                      tests unitaires
 └── docs/                       analyse (avec schéma), résultat du profilage
 ```
@@ -195,7 +222,7 @@ Dans pgAdmin, le bouton « œil » de la colonne `geom` affiche les résultats s
 
 Détails dans [docs/analyse.md](docs/analyse.md). En résumé :
 
-- **Sous-ensemble utilisé** : fichiers 2026 de Grosse-Île (01042), Petite-Vallée (03015), Rivière-à-Claude (04020) et Sherbrooke (43027), soit 57 535 unités.
+- **Sous-ensemble utilisé** : fichiers 2026 de Grosse-Île (01042), Petite-Vallée (03015), Rivière-à-Claude (04020) et Sherbrooke (43027), soit 57 535 unités. Seul Grosse-Île est inclus dans le dépôt (`data/sample/`).
 - Une unité est identifiée par **municipalité + année du rôle (`RLM02A`) + matricule**. L'année vient du contenu, pas du nom du fichier.
 - Seuls ~20 champs utiles sont typés en colonnes ; **l'unité complète est conservée en JSONB** (`raw`).
 - Les nomenclatures (codes d'utilisation CUBF, génériques de rue…) ne sont pas décodées.
