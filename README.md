@@ -21,17 +21,22 @@ fichier XML ──► lire (streaming) ──► valider + nettoyer ──► ch
 - **Validation selon le répertoire officiel** : champs obligatoires, types, dates, domaines de valeurs.
 - **Rejouable (idempotent)** : relancer l'import donne le même résultat, sans doublons.
 - **Journal complet** : chaque exécution et chaque unité rejetée sont tracées en base.
+- **Bonus géolocalisation** : un point GPS par unité (PostGIS), depuis le rôle géoréférencé officiel.
+
 ## Prérequis
 
 - Node.js 20 ou plus
 - Docker (avec Docker Compose)
+- Bonus géo : `better-sqlite3` (installé par `npm install`) est un module natif, téléchargé précompilé
+  (testé avec Node 20 sous Windows) ; sans binaire disponible, npm tente une compilation locale
+
 ## Installation
 
 ```bash
 git clone <url-du-depot>
 cd quebec-property-roll-importer
 npm install
-docker compose up -d      # démarre PostgreSQL 16 et crée les tables automatiquement
+docker compose up -d      # démarre PostgreSQL 16 + PostGIS et crée les tables automatiquement
 ```
 
 > La base écoute sur le port **5433** (et non 5432) pour éviter un conflit avec un PostgreSQL déjà installé.
@@ -77,6 +82,29 @@ SKIPPED RL01042_2026.xml  read=0 loaded=0 rejected=0  31 ms  -> same content alr
 
 Le code de sortie vaut `1` si au moins un fichier a échoué : un orchestrateur (n8n, cron…) peut donc détecter l'erreur.
 
+### Bonus : géolocalisation
+
+Le rôle géoréférencé n'existe que pour **toute la province** (573 Mo compressé, 2,8 Go décompressé) :
+
+```bash
+mkdir -p data/geo && cd data/geo
+curl -O "https://donneesouvertes.affmunqc.net/role/ROLE2026_GEOPACKAGE.zip"
+unzip ROLE2026_GEOPACKAGE.zip
+cd ../..
+
+# À lancer après l'import : ne charge que les municipalités déjà présentes en base
+npm run geo -- data/geo/Role2026_geopackage/Role_2026_2.gpkg
+```
+
+```
+Loaded 57535 points from Role_2026_2.gpkg (layer rol_unite_p_2026) in 1954 ms
+  01042: 593/593 units located
+  43027: 56325/56325 units located
+```
+
+Rejouable : les points des municipalités concernées sont remplacés dans une transaction. Les deux imports sont
+indépendants : réimporter le rôle ne supprime pas les points, et inversement.
+
 ### Autres commandes
 
 ```bash
@@ -107,19 +135,31 @@ ORDER BY p.total_value DESC LIMIT 10;
 
 -- Donnée d'origine complète d'une unité
 SELECT matricule, jsonb_pretty(raw) FROM property_unit LIMIT 1;
+
+-- Bonus géo : les unités à moins de 500 m de l'Université de Sherbrooke
+WITH u AS (SELECT geom FROM property_unit_map WHERE matricule = '9327-04-0868')
+SELECT p.matricule, p.usage_code, p.total_value, p.geom
+FROM property_unit_map p, u
+WHERE ST_DWithin(p.geom::geography, u.geom::geography, 500);
 ```
+
+Dans pgAdmin, le bouton « œil » de la colonne `geom` affiche les résultats sur une carte (Geometry Viewer).
 
 ## Structure du projet
 
 ```
-├── docker-compose.yml          PostgreSQL 16 ; exécute db/migrations au premier démarrage
-├── db/migrations/001_init.sql  schéma de la base
+├── docker-compose.yml          PostgreSQL 16 + PostGIS ; exécute db/migrations au premier démarrage
+├── db/migrations/
+│   ├── 001_init.sql            schéma de la base
+│   └── 002_geo.sql             bonus : PostGIS, table des points, vue property_unit_map
 ├── src/
 │   ├── cli.ts                  point d'entrée : liste les fichiers et lance l'import
 │   ├── parse.ts                lecture XML en streaming → une unité à la fois
 │   ├── transform.ts            validation + nettoyage d'une unité (règles du répertoire)
 │   ├── load.ts                 chargement : empreinte, transaction, lots, journal
 │   ├── db.ts                   connexion PostgreSQL
+│   ├── geo.ts                  bonus : chargement des points depuis le GeoPackage
+│   ├── gpkg.ts                 décodage des géométries GeoPackage
 │   └── scripts/profile.ts      outil d'analyse des données (hors import)
 ├── tests/                      tests unitaires
 └── docs/                       analyse (avec schéma), résultat du profilage
@@ -145,4 +185,5 @@ Détails dans [docs/analyse.md](docs/analyse.md). En résumé :
 - Seuls ~20 champs utiles sont typés en colonnes ; **l'unité complète est conservée en JSONB** (`raw`).
 - Les nomenclatures (codes d'utilisation CUBF, génériques de rue…) ne sont pas décodées.
 - Les unités de mesure (superficie, front) ne sont pas précisées dans le répertoire : aucune conversion n'est faite.
-- Pas de données géographiques (bonus non réalisé), pas de téléchargement automatique.
+- Pas de téléchargement automatique.
+- Géolocalisation : un point par unité (pas de contour de terrain) ; nécessite le fichier provincial de 2,8 Go.

@@ -91,6 +91,7 @@ erDiagram
   import_run    ||--o{ property_unit    : "a chargé"
   import_run    ||--o{ import_error     : "a rejeté"
   property_unit ||--o{ property_address : "a"
+  property_unit |o..o| property_location : "matricule18 (bonus géo)"
 
   municipality {
     text code PK
@@ -110,6 +111,12 @@ erDiagram
     bigint property_unit_id FK
     smallint position
     text street_name
+  }
+  property_location {
+    text municipality_code PK
+    char matricule18 PK
+    geometry geom
+    smallint location_quality_code
   }
   import_run {
     bigint id PK
@@ -131,6 +138,7 @@ erDiagram
 | `municipality` | Une ligne par municipalité (code, nom issu de l'index officiel) |
 | `property_unit` | Une ligne par unité d'évaluation et par rôle ; ~20 champs typés + `raw` (JSONB) |
 | `property_address` | Adresses d'une unité (groupe répétable `RL0101x`) |
+| `property_location` | Bonus : un point (PostGIS) par unité, issu du rôle géoréférencé (section 6) |
 | `import_run` | Journal : une ligne par tentative d'import d'un fichier (statut, empreinte, compteurs, erreur) |
 | `import_error` | Une ligne par unité rejetée (position, matricule, champ, message) |
 
@@ -187,12 +195,12 @@ erDiagram
 | Une unité invalide | `success`, 1 rejet tracé avec matricule et champ |
 | 10 % d'unités invalides | `failed` (seuil), données conservées |
 | Version A → version B → version A | La version A est bien rechargée (bug trouvé et corrigé grâce à ce test) |
-| Tests unitaires (`npm test`) | 9/9 : nettoyage, rejets, en-tête, parseur, XML mal formé |
+| Tests unitaires (`npm test`) | 12/12 : nettoyage, rejets, en-tête, parseur, XML mal formé, matricule 18, géométrie |
 
 ### Performance
 Sherbrooke : 56 325 unités en ~7 s, mémoire maximale ~100 Mo, indépendante de la taille du fichier.
-Extrapolation (hypothèse : quelques millions d'unités pour la province) : de l'ordre de 10 minutes sur un poste
-de développement.
+Le fichier géoréférencé 2026 compte **3 747 008 unités** pour la province ; au même rythme (~7 700 unités/s),
+un import complet prendrait de l'ordre de **8 à 10 minutes** sur un poste de développement (extrapolation, non mesurée).
 
 ## 4. Hypothèses
 
@@ -207,13 +215,52 @@ de développement.
 ## 5. Limites et suites possibles
 
 - **Nomenclatures non décodées** (CUBF, génériques de rue, codes fiscaux) : on ajouterait des tables de référence.
+  Les listes officielles sont fournies dans l'archive géoréférencée (`CUBF_MEFQ.xlsx`, dossier « Domaines de valeurs »).
 - **Groupes répétables partiellement normalisés** : seuls les adresses ; lots, historique et répartitions fiscales
   sont dans `raw`.
-- **Pas de géolocalisation** : le jeu de données propose une version géoréférencée (GeoJSON/GPKG) qui pourrait être
-  jointe sur le matricule avec PostGIS.
+- **Géolocalisation ponctuelle** : un point par unité, pas le contour du terrain (non publié dans ce jeu de données).
 - **Pas de téléchargement automatique** : l'index CSV permet de l'ajouter simplement, par exemple dans un workflow
   n8n (télécharger → `npm run import` → alerte selon le code de sortie).
 - **Historique** : le modèle garde un rôle par année, mais ne trace pas les mises à jour en cours de rôle
   (l'index trimestriel `indexRole.csv` le permettrait).
 - **Seuil de 5 %** : valeur arbitraire, à ajuster avec l'expérience.
 
+## 6. Bonus : géolocalisation
+
+### Source
+Le jeu de données publie un **rôle géoréférencé** : un point par unité d'évaluation, **uniquement pour toute la
+province** (GeoPackage 2026 : 573 Mo compressé, 2,8 Go décompressé, 3 747 008 points). Un GeoPackage est une base
+SQLite ; la couche `rol_unite_p_2026` contient notamment `code_mun`, `mat18` (matricule sur 18 chiffres),
+`rejet` (qualité de la localisation) et la géométrie (MultiPoint d'un seul point, NAD83 / EPSG:4269).
+
+### Liaison avec le rôle
+`mat18` = les 6 parties du matricule (`RL0104A` à `F`) sans séparateur, les parties absentes complétées par des zéros :
+`0174-87-0100` → `017487010000000000`. La colonne `matricule18` est calculée à l'import du rôle.
+
+| Municipalité | Unités | Points | Unités localisées |
+|---|---|---|---|
+| Grosse-Île | 593 | 593 | 100 % |
+| Petite-Vallée | 324 | 324 | 100 % |
+| Rivière-à-Claude | 293 | 293 | 100 % |
+| Sherbrooke | 56 325 | 56 325 | 100 % |
+
+Qualité : 57 531 points « bien géolocalisés » (`rejet = 0`), 4 en « limite municipale » (`rejet = 2`).
+Le code est conservé (`location_quality_code`) pour permettre de filtrer les points moins fiables.
+
+### Choix
+- **PostGIS** (image `postgis/postgis`) : type `geometry(Point, 4326)`, index spatial GiST, fonctions de distance.
+- **Conversion en WGS 84** (EPSG:4326, le standard GPS et web) lors du chargement.
+- **Table séparée** `property_location`, liée par `(municipality_code, matricule18)` et non par une clé étrangère :
+  les deux imports sont indépendants (réimporter le rôle ne supprime pas les points, et inversement).
+  La vue `property_unit_map` fait la jointure.
+- **Lecture en TypeScript** (`better-sqlite3`, ouverture en lecture seule) plutôt qu'un outil externe (GDAL/ogr2ogr) :
+  un seul langage et le même modèle d'import (transaction, rejouable). Le décodage du format binaire GeoPackage
+  est fait selon la spécification (`src/gpkg.ts`) et testé.
+- **Filtrage** : seules les municipalités déjà importées sont chargées (57 535 points en ~2 s).
+
+### Vérifications
+- Rechargement : mêmes volumes, aucun doublon (clé primaire).
+- Réimport forcé du rôle : les points restent liés (593/593).
+- Cohérence spatiale : chaque ville tombe dans la bonne zone (ex. Sherbrooke : 45,30–45,52 N, 72,11–71,81 O) ;
+  le point du 2500, boul. de l'Université est bien sur le campus de l'Université de Sherbrooke.
+- Requête spatiale : 255 unités à moins de 500 m de ce point (`ST_DWithin`).
