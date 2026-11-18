@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: roll
+      POSTGRES_PASSWORD: roll
+      POSTGRES_DB: property_roll
+    ports:
+      # 5433 on the host, to avoid clashing with a local Postgres on 5432
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # SQL files here run automatically the first time the database is created
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roll -d property_roll"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:
