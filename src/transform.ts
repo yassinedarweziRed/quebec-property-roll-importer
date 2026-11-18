@@ -13,6 +13,7 @@ export class FieldError extends Error {
 
 export interface PropertyRow {
   matricule: string;
+  matricule18: string;
   borough_code: string | null;
   usage_code: string;
   file_number: string | null;
@@ -115,12 +116,23 @@ export function checkHeader(header: RollHeader): FileInfo {
 
 // ---- unit level ----
 
-/** Matricule = RL0104A-B-C-D-E-F. Empty trailing parts are removed: "0174-87-0100". */
-export function buildMatricule(unit: XmlNode): string {
+/** The 6 matricule parts RL0104A..F. A, B, C are required; D, E, F are "" when absent. */
+function matriculeParts(unit: XmlNode): string[] {
   const m = group(unit.RL0104);
   const parts = ["RL0104A", "RL0104B", "RL0104C"].map((tag) => required(text(m[tag]), `RL0104.${tag}`));
   for (const tag of ["RL0104D", "RL0104E", "RL0104F"]) parts.push(text(m[tag]) ?? "");
-  return parts.join("-").replace(/-+$/, "");
+  return parts;
+}
+
+/** Matricule = RL0104A-B-C-D-E-F. Empty trailing parts are removed: "0174-87-0100". */
+export function buildMatricule(unit: XmlNode): string {
+  return matriculeParts(unit).join("-").replace(/-+$/, "");
+}
+
+/** 18-digit matricule used by the geo file: parts joined, empty D/E/F filled with zeros. */
+export function buildMatricule18(unit: XmlNode): string {
+  const [a, b, c, d, e, f] = matriculeParts(unit);
+  return a + b + c + (d || "0") + (e || "000") + (f || "0000");
 }
 
 /** Throws FieldError if the unit breaks a rule: the unit is then rejected and logged. */
@@ -128,6 +140,7 @@ export function transformUnit(unit: XmlNode): { property: PropertyRow; addresses
   const estimatedFlag = oneOf(unit.RL0307B, "RL0307B", ["E", "R"]); // E = estimated, R = real
   const property: PropertyRow = {
     matricule: buildMatricule(unit),
+    matricule18: buildMatricule18(unit),
     borough_code: text(unit.RL0102A),
     usage_code: required(text(unit.RL0105A), "RL0105A"),
     file_number: text(unit.RL0106A),

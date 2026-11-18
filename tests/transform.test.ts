@@ -55,6 +55,14 @@ describe("transformUnit", () => {
     unit.RL0104 = { RL0104A: "0174", RL0104B: "87", RL0104C: "0100", RL0104E: "001" };
     expect(transformUnit(unit).property.matricule).toBe("0174-87-0100--001");
   });
+
+  it("builds the 18-digit matricule used by the geo file", () => {
+    expect(transformUnit(validUnit()).property.matricule18).toBe("017487010000000000");
+    const unit = validUnit();
+    unit.RL0104 = { RL0104A: "0375", RL0104B: "01", RL0104C: "2629", RL0104E: "001", RL0104F: "0001" };
+    expect(transformUnit(unit).property.matricule18).toBe("037501262900010001");
+  });
+
   it("rejects a unit with a missing required field", () => {
     const unit = validUnit();
     delete unit.RL0404A;

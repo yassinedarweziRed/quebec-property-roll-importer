@@ -5,15 +5,18 @@
   "type": "module",
   "scripts": {
     "import": "tsx src/cli.ts",
+    "geo": "tsx src/geo.ts",
     "profile": "tsx src/scripts/profile.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
     "pg": "^8.23.1",
     "saxes": "^6.0.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",

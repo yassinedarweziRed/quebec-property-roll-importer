@@ -19,7 +19,7 @@ const BATCH_SIZE = 1000; // units inserted per SQL statement
 const MAX_REJECTED_RATIO = 0.05; // above 5% rejected, we suspect a format change and fail the file
 
 const PROPERTY_COLUMNS: (keyof PropertyRow)[] = [
-  "matricule", "borough_code", "usage_code", "file_number", "neighborhood_unit",
+  "matricule", "matricule18", "borough_code", "usage_code", "file_number", "neighborhood_unit",
   "frontage", "land_area", "agricultural_zone_code", "max_floors", "construction_year",
   "construction_year_estimated", "floor_area", "dwelling_count", "market_reference_date",
   "land_value", "building_value", "total_value", "previous_total_value",
