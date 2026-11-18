@@ -6,6 +6,7 @@
   "scripts": {
     "import": "tsx src/cli.ts",
     "profile": "tsx src/scripts/profile.ts",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
