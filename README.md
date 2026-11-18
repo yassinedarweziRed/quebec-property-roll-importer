@@ -22,6 +22,7 @@ fichier XML ──► lire (streaming) ──► valider + nettoyer ──► ch
 - **Rejouable (idempotent)** : relancer l'import donne le même résultat, sans doublons.
 - **Journal complet** : chaque exécution et chaque unité rejetée sont tracées en base.
 - **Bonus géolocalisation** : un point GPS par unité (PostGIS), depuis le rôle géoréférencé officiel.
+- **Bonus téléchargement** : récupération automatique des fichiers d'une liste de municipalités.
 
 ## Prérequis
 
@@ -45,18 +46,30 @@ docker compose up -d      # démarre PostgreSQL 16 + PostGIS et crée les tables
 
 ## Données
 
-Le téléchargement est hors périmètre : l'outil part de fichiers locaux. Les fichiers utilisés pour les tests :
+L'import part de fichiers locaux. **Bonus** : la commande `download` les récupère automatiquement à partir de
+l'index officiel (`indexRole<année>.csv` : code, nom et lien du fichier de chaque municipalité).
 
 ```bash
-mkdir -p data/raw/2026
-cd data/raw
-# Index officiel : code, nom et lien du fichier de chaque municipalité
-curl -O "https://donneesouvertes.affmunqc.net/role/indexRole2026.csv"
-cd 2026
-for c in 01042 03015 04020 43027; do
-  curl -O "https://donneesouvertes.affmunqc.net/role/RL${c}_2026.xml"
-done
+# Les 4 municipalités utilisées pour les tests (année 2026 par défaut)
+npm run download -- 01042 03015 04020 43027
+# Autre année
+npm run download -- 01042 --year 2025
 ```
+
+```
+Index 2026: 1134 municipalities
+OK      RL01042_2026.xml  Grosse-Île  0.6 MB  957 ms
+OK      RL43027_2026.xml  Sherbrooke  68.4 MB  34193 ms
+```
+
+- Fichiers enregistrés dans `data/raw/<année>/`, l'index dans `data/raw/indexRole<année>.csv`.
+- Téléchargement en streaming vers un fichier `.part`, renommé seulement une fois complet : une coupure
+  ne laisse jamais de XML à moitié écrit.
+- Code inconnu ou erreur HTTP : ligne `FAILED`, les autres fichiers continuent, code de sortie `1`.
+- Retélécharger un fichier inchangé est sans risque : l'import le reconnaît (même empreinte) et l'ignore.
+
+Sans la commande, les mêmes fichiers s'obtiennent avec `curl` :
+`https://donneesouvertes.affmunqc.net/role/RL01042_2026.xml`.
 
 ## Utilisation
 
@@ -158,6 +171,8 @@ Dans pgAdmin, le bouton « œil » de la colonne `geom` affiche les résultats s
 │   ├── transform.ts            validation + nettoyage d'une unité (règles du répertoire)
 │   ├── load.ts                 chargement : empreinte, transaction, lots, journal
 │   ├── db.ts                   connexion PostgreSQL
+│   ├── download.ts             bonus : téléchargement des fichiers depuis l'index officiel
+│   ├── indexCsv.ts             lecture de l'index officiel (partagée par import et download)
 │   ├── geo.ts                  bonus : chargement des points depuis le GeoPackage
 │   ├── gpkg.ts                 décodage des géométries GeoPackage
 │   └── scripts/profile.ts      outil d'analyse des données (hors import)
@@ -185,5 +200,6 @@ Détails dans [docs/analyse.md](docs/analyse.md). En résumé :
 - Seuls ~20 champs utiles sont typés en colonnes ; **l'unité complète est conservée en JSONB** (`raw`).
 - Les nomenclatures (codes d'utilisation CUBF, génériques de rue…) ne sont pas décodées.
 - Les unités de mesure (superficie, front) ne sont pas précisées dans le répertoire : aucune conversion n'est faite.
-- Pas de téléchargement automatique.
+- Téléchargement automatique : municipalités choisies uniquement (pas de « toute la province »), pas de
+  planification (cron), et le fichier géoréférencé de 573 Mo reste à télécharger à la main.
 - Géolocalisation : un point par unité (pas de contour de terrain) ; nécessite le fichier provincial de 2,8 Go.

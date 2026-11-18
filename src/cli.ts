@@ -4,6 +4,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pool } from "./db.js";
+import { parseIndex } from "./indexCsv.js";
 import { importFile } from "./load.js";
 
 const args = process.argv.slice(2);
@@ -26,13 +27,13 @@ const files = inputs.flatMap((input) =>
 );
 
 if (indexFile) {
-  const names = readMunicipalityNames(indexFile);
+  const entries = [...parseIndex(readFileSync(indexFile, "utf8")).values()];
   await pool.query(
     `INSERT INTO municipality (code, name) SELECT * FROM unnest($1::text[], $2::text[])
      ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name`,
-    [[...names.keys()], [...names.values()]],
+    [entries.map((e) => e.code), entries.map((e) => e.name)],
   );
-  console.log(`Municipality names loaded from index: ${names.size}`);
+  console.log(`Municipality names loaded from index: ${entries.length}`);
 }
 
 let failed = 0;
@@ -48,14 +49,3 @@ for (const file of files) {
 await pool.end();
 // Exit code 1 if any file failed: useful for automation (n8n, cron...) to detect a problem.
 process.exitCode = failed ? 1 : 0;
-
-/** Index CSV: "code géographique,nom du territoire,lien". Codes are written without leading zeros (1042 -> 01042). */
-function readMunicipalityNames(csvPath: string): Map<string, string> {
-  const names = new Map<string, string>();
-  for (const line of readFileSync(csvPath, "utf8").split(/\r?\n/).slice(1)) {
-    const [code, name] = line.split(",");
-    if (!code || !name) continue;
-    names.set(/^\d+$/.test(code) ? code.padStart(5, "0") : code, name.trim());
-  }
-  return names;
-}

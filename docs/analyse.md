@@ -195,7 +195,9 @@ erDiagram
 | Une unité invalide | `success`, 1 rejet tracé avec matricule et champ |
 | 10 % d'unités invalides | `failed` (seuil), données conservées |
 | Version A → version B → version A | La version A est bien rechargée (bug trouvé et corrigé grâce à ce test) |
-| Tests unitaires (`npm test`) | 12/12 : nettoyage, rejets, en-tête, parseur, XML mal formé, matricule 18, géométrie |
+| Téléchargement (`npm run download`) des 4 fichiers | Fichiers identiques octet par octet aux originaux (SHA-256) ; import suivant : 4 × `skipped` |
+| Téléchargement : code inconnu, année sans index | `FAILED` explicite, aucun fichier partiel, code de sortie `1` |
+| Tests unitaires (`npm test`) | 14/14 : nettoyage, rejets, en-tête, parseur, XML mal formé, matricule 18, géométrie, index |
 
 ### Performance
 Sherbrooke : 56 325 unités en ~7 s, mémoire maximale ~100 Mo, indépendante de la taille du fichier.
@@ -219,8 +221,9 @@ un import complet prendrait de l'ordre de **8 à 10 minutes** sur un poste de d�
 - **Groupes répétables partiellement normalisés** : seuls les adresses ; lots, historique et répartitions fiscales
   sont dans `raw`.
 - **Géolocalisation ponctuelle** : un point par unité, pas le contour du terrain (non publié dans ce jeu de données).
-- **Pas de téléchargement automatique** : l'index CSV permet de l'ajouter simplement, par exemple dans un workflow
-  n8n (télécharger → `npm run import` → alerte selon le code de sortie).
+- **Téléchargement automatique partiel** (bonus, `npm run download`) : municipalités choisies à partir de l'index
+  officiel. Restent à faire : option « toute la province » (~1 100 fichiers), planification (cron, n8n…) avec
+  alerte selon le code de sortie, et téléchargement du fichier géoréférencé.
 - **Historique** : le modèle garde un rôle par année, mais ne trace pas les mises à jour en cours de rôle
   (l'index trimestriel `indexRole.csv` le permettrait).
 - **Seuil de 5 %** : valeur arbitraire, à ajuster avec l'expérience.
